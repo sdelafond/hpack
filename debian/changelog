@@ -1,0 +1,6 @@
+python-hpack (1.1.0-1) unstable; urgency=low
+
+  * New package (Closes: #789781); thanks to Sophie Brun <sophie@freexian.com>
+    for doing the entire packaging work.
+
+ -- Sebastien Delafond <seb@debian.org>  Wed, 29 Jul 2015 20:39:43 +0200

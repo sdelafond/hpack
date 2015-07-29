@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=hpack
+
+%:
+	dh $@ --with python2,python3 --buildsystem=pybuild
+
+override_dh_installchangelogs:
+	dh_installchangelogs HISTORY.rst
+
+override_dh_auto_test:
+	dh_auto_test -- --test-pytest
