@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Sebastien Delafond <seb@debian.org>
 Build-Depends: debhelper (>= 9), dh-python, python-all, python-setuptools,
  python-pytest, python3-all, python3-setuptools, python3-pytest
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: http://hyper.readthedocs.org/en/latest/
 Vcs-Git: git://git.kali.org/packages/python-hpack.git
 Vcs-Browser: http://git.kali.org/gitweb/?p=packages/python-hpack.git;a=summary
@@ -21,7 +21,7 @@ Description: Pure-Python HTTP/2 header encoding (HPACK)
 Package: python3-hpack
 Architecture: all
 Depends: ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends}
-Description: Pure-Python HTTP/2 header encoding (HPACK)
+Description: Pure-Python3 HTTP/2 header encoding (HPACK)
  This module contains a pure-Python HTTP/2 header encoding (HPACK) logic
  for use in Python programs that implement HTTP/2. It also contains a
  compatibility layer that automatically enables the use of nghttp2 if
