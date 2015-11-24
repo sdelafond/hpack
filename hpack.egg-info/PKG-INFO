@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: hpack
-Version: 1.1.0
+Version: 2.0.1
 Summary: Pure-Python HPACK header compression
 Home-page: http://hyper.rtfd.org
 Author: Cory Benfield
@@ -47,6 +47,21 @@ Description: ========================================
         Release History
         ===============
         
+        2.0.1 (2015-11-09)
+        ------------------
+        
+        - Fixed a bug where the Python HPACK implementation would only emit header
+          table size changes for the total change between one header block and another,
+          rather than for the entire sequence of changes.
+        
+        2.0.0 (2015-10-12)
+        ------------------
+        
+        - Remove unused ``HPACKEncodingError``.
+        - Add the shortcut ability to import the public API (``Encoder``, ``Decoder``,
+          ``HPACKError``, ``HPACKDecodingError``) directly, rather than from
+          ``hpack.hpack``.
+        
         1.1.0 (2015-07-07)
         ------------------
         
@@ -70,12 +85,14 @@ Description: ========================================
         .. _hyper: https://hyper.readthedocs.org/
         
 Platform: UNKNOWN
-Classifier: Development Status :: 3 - Alpha
+Classifier: Development Status :: 5 - Production/Stable
 Classifier: Intended Audience :: Developers
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python
 Classifier: Programming Language :: Python :: 2
 Classifier: Programming Language :: Python :: 2.7
 Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
 Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
 Classifier: Programming Language :: Python :: Implementation :: CPython
