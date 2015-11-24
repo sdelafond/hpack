@@ -7,6 +7,3 @@ export PYBUILD_NAME=hpack
 
 override_dh_installchangelogs:
 	dh_installchangelogs HISTORY.rst
-
-override_dh_auto_test:
-	dh_auto_test -- --test-pytest
