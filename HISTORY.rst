@@ -1,6 +1,21 @@
 Release History
 ===============
 
+2.0.1 (2015-11-09)
+------------------
+
+- Fixed a bug where the Python HPACK implementation would only emit header
+  table size changes for the total change between one header block and another,
+  rather than for the entire sequence of changes.
+
+2.0.0 (2015-10-12)
+------------------
+
+- Remove unused ``HPACKEncodingError``.
+- Add the shortcut ability to import the public API (``Encoder``, ``Decoder``,
+  ``HPACKError``, ``HPACKDecodingError``) directly, rather than from
+  ``hpack.hpack``.
+
 1.1.0 (2015-07-07)
 ------------------
 
