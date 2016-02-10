@@ -8,7 +8,8 @@ Implements the HPACK header compression algorithm as detailed by the IETF.
 import logging
 
 from .table import HeaderTable
-from .compat import to_byte
+from .compat import to_byte, to_bytes
+from .exceptions import HPACKDecodingError
 from .huffman import HuffmanDecoder, HuffmanEncoder
 from .huffman_constants import (
     REQUEST_CODES, REQUEST_CODES_LENGTH
@@ -57,19 +58,24 @@ def decode_integer(data, prefix_bits):
     mask = 0xFF >> (8 - prefix_bits)
     index = 0
 
-    number = to_byte(data[index]) & mask
+    try:
+        number = to_byte(data[index]) & mask
 
-    if (number == max_number):
+        if (number == max_number):
 
-        while True:
-            index += 1
-            next_byte = to_byte(data[index])
+            while True:
+                index += 1
+                next_byte = to_byte(data[index])
 
-            if next_byte >= 128:
-                number += (next_byte - 128) * multiple(index)
-            else:
-                number += next_byte * multiple(index)
-                break
+                if next_byte >= 128:
+                    number += (next_byte - 128) * multiple(index)
+                else:
+                    number += next_byte * multiple(index)
+                    break
+    except IndexError:
+        raise HPACKDecodingError(
+            "Unable to decode HPACK integer representation from %r" % data
+        )
 
     log.debug("Decoded %d, consumed %d bytes", number, index + 1)
 
@@ -295,12 +301,16 @@ class Decoder(object):
     def header_table_size(self, value):
         self.header_table.maxsize = value
 
-    def decode(self, data):
+    def decode(self, data, raw=False):
         """
         Takes an HPACK-encoded header block and decodes it into a header set.
 
         :param data: A bytestring representing a complete HPACK-encoded header
                      block.
+        :param raw: (optional) Whether to return the headers as tuples of raw
+                    byte strings or to decode them as UTF-8 before returning
+                    them. The default value is False, which returns tuples of
+                    Unicode strings
         :returns: A list of two-tuples of ``(name, value)`` representing the
                   HPACK-encoded headers, in the order they were decoded.
         :raises HPACKDecodingError: If an error is encountered while decoding
@@ -308,6 +318,7 @@ class Decoder(object):
         """
         log.debug("Decoding %s", data)
 
+        data_mem = memoryview(data)
         headers = []
         data_len = len(data)
         current_index = 0
@@ -327,20 +338,20 @@ class Decoder(object):
             encoding_update = bool(current & 0x20)
 
             if indexed:
-                header, consumed = self._decode_indexed(data[current_index:])
+                header, consumed = self._decode_indexed(data_mem[current_index:])
             elif literal_index:
                 # It's a literal header that does affect the header table.
                 header, consumed = self._decode_literal_index(
-                    data[current_index:]
+                    data_mem[current_index:]
                 )
             elif encoding_update:
                 # It's an update to the encoding context.
-                consumed = self._update_encoding_context(data)
+                consumed = self._update_encoding_context(data_mem)
                 header = None
             else:
                 # It's a literal header that does not affect the header table.
                 header, consumed = self._decode_literal_no_index(
-                    data[current_index:]
+                    data_mem[current_index:]
                 )
 
             if header:
@@ -348,7 +359,14 @@ class Decoder(object):
 
             current_index += consumed
 
-        return [(n.decode('utf-8'), v.decode('utf-8')) for n, v in headers]
+        decode_if_needed = lambda h, r: tuple(
+            to_bytes(i) if r else to_bytes(i).decode('utf-8') for i in h
+        )
+
+        try:
+            return [decode_if_needed(header, raw) for header in headers]
+        except UnicodeDecodeError:
+            raise HPACKDecodingError("Unable to decode headers as UTF-8.")
 
     def _update_encoding_context(self, data):
         """
