@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from hpack.hpack import Encoder, Decoder, encode_integer, decode_integer
 from hpack.huffman import HuffmanDecoder
-from hpack.exceptions import HPACKDecodingError
+from hpack.exceptions import HPACKDecodingError, InvalidTableIndex
 import os
 import pytest
 
@@ -33,7 +33,7 @@ class TestHPACKEncoder(object):
 
     def test_sensitive_headers(self):
         """
-        Test encoding header values  
+        Test encoding header values
         """
         e = Encoder()
         result = (b'\x82\x14\x88\x63\xa1\xa9' +
@@ -44,7 +44,7 @@ class TestHPACKEncoder(object):
         header_set = [
             (':method', 'GET', True),
             (':path', '/jimiscool/', True),
-            ('customkey','sensitiveinfo',True) 
+            ('customkey','sensitiveinfo',True)
         ]
         assert e.encode(header_set, huffman=True) == result
 
@@ -302,6 +302,17 @@ class TestHPACKDecoder(object):
             (n.encode('utf-8'), v.encode('utf-8')) for n, v in header_set
         ]
 
+    def test_raw_decoding(self):
+        """
+        The header field representation is decoded as a raw byte string instead
+        of UTF-8
+        """
+        d = Decoder()
+        header_set = [(b'\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14', b'custom-header')]
+        data = b'\x40\x0a\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14\x0dcustom-header'
+
+        assert d.decode(data, raw=True) == header_set
+
     def test_literal_header_field_without_indexing(self):
         """
         The header field representation uses an indexed name and a literal
@@ -493,6 +504,31 @@ class TestHPACKDecoder(object):
         # The status header shouldn't be indexed.
         assert len(d.header_table.dynamic_entries) == len(expect) - 1
 
+    def test_utf8_errors_raise_hpack_decoding_error(self):
+        d = Decoder()
+
+        # Invalid UTF-8 data.
+        data = b'\x82\x86\x84\x01\x10www.\x07\xaa\xd7\x95\xd7\xa8\xd7\x94.com'
+
+        with pytest.raises(HPACKDecodingError):
+            d.decode(data)
+
+    def test_invalid_indexed_literal(self):
+        d = Decoder()
+
+        # Refer to an index that is too large.
+        data = b'\x82\x86\x84\x7f\x0a\x0fwww.example.com'
+        with pytest.raises(InvalidTableIndex):
+            d.decode(data)
+
+    def test_invalid_indexed_header(self):
+        d = Decoder()
+
+        # Refer to an indexed header that is too large.
+        data = b'\xBE\x86\x84\x01\x0fwww.example.com'
+        with pytest.raises(InvalidTableIndex):
+            d.decode(data)
+
 
 class TestIntegerEncoding(object):
     # These tests are stolen from the HPACK spec.
@@ -525,6 +561,14 @@ class TestIntegerDecoding(object):
     def test_encoding_42_with_8_bit_prefix(self):
         val = decode_integer(b'\x2a', 8)
         assert val == (42, 1)
+
+    def test_decode_empty_string_fails(self):
+        with pytest.raises(HPACKDecodingError):
+            decode_integer(b'', 8)
+
+    def test_decode_insufficient_data_fails(self):
+        with pytest.raises(HPACKDecodingError):
+            decode_integer(b'\x1f', 5)
 
 
 class TestUtilities(object):

@@ -1,6 +1,27 @@
 Release History
 ===============
 
+2.1.0 (2016-02-02)
+------------------
+
+**API Changes (Backward Compatible)**
+
+- Added new ``InvalidTableIndex`` exception, a subclass of
+  ``HPACKDecodingError``.
+- Instead of throwing ``IndexError`` when encountering invalid encoded integers
+  HPACK now throws ``HPACKDecodingError``.
+- Instead of throwing ``UnicodeDecodeError`` when encountering headers that are
+  not UTF-8 encoded, HPACK now throws ``HPACKDecodingError``.
+- Instead of throwing ``IndexError`` when encountering invalid table offsets,
+  HPACK now throws ``InvalidTableIndex``.
+- Added ``raw`` flag to ``decode``, allowing ``decode`` to return bytes instead
+  of attempting to decode the headers as UTF-8.
+
+**Bugfixes**
+
+- ``memoryview`` objects are now used when decoding HPACK, improving the
+  performance by avoiding unnecessary data copies.
+
 2.0.1 (2015-11-09)
 ------------------
 

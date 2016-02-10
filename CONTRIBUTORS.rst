@@ -21,6 +21,11 @@ In chronological order:
 
   - Support for 'never indexed' header fields.
   - Refactor of header table code.
+  - Add support for returning bytestring headers instead of UTF-8 decoded ones.
+
+- Eugene Obukhov (@irvind)
+
+  - Improved decoding efficiency.
 
 Contributors (hyper)
 ````````````````````
