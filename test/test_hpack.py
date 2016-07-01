@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
-from hpack.hpack import Encoder, Decoder, encode_integer, decode_integer
-from hpack.huffman import HuffmanDecoder
+from hpack.hpack import (
+    Encoder, Decoder, encode_integer, decode_integer, _dict_to_iterable,
+    _to_bytes
+)
 from hpack.exceptions import HPACKDecodingError, InvalidTableIndex
+from hpack.struct import HeaderTuple, NeverIndexedHeaderTuple
+import itertools
 import os
 import pytest
 
+from hypothesis import given
+from hypothesis.strategies import text, binary, sets, one_of
 
-class TestHuffmanDecoder(object):
-    def test_huffman_decoder_throws_useful_exceptions(self):
-        # Specify a HuffmanDecoder with no values in it, then attempt to decode
-        # using it.
-        d = HuffmanDecoder([], [])
-        with pytest.raises(HPACKDecodingError):
-            d.decode(b'test')
+try:
+    unicode = unicode
+except NameError:
+    unicode = str
 
 
 class TestHPACKEncoder(object):
@@ -28,7 +31,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(header_set, huffman=False) == result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in header_set.items()
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in header_set.items()
         ]
 
     def test_sensitive_headers(self):
@@ -44,7 +48,43 @@ class TestHPACKEncoder(object):
         header_set = [
             (':method', 'GET', True),
             (':path', '/jimiscool/', True),
-            ('customkey','sensitiveinfo',True)
+            ('customkey', 'sensitiveinfo', True),
+        ]
+        assert e.encode(header_set, huffman=True) == result
+
+    def test_non_sensitive_headers_with_header_tuples(self):
+        """
+        A header field stored in a HeaderTuple emits a representation that
+        allows indexing.
+        """
+        e = Encoder()
+        result = (b'\x82\x44\x88\x63\xa1\xa9' +
+                  b'\x32\x08\x73\xd0\xc7\x40' +
+                  b'\x87\x25\xa8\x49\xe9\xea' +
+                  b'\x5f\x5f\x89\x41\x6a\x41' +
+                  b'\x92\x6e\xe5\x35\x52\x9f')
+        header_set = [
+            HeaderTuple(':method', 'GET'),
+            HeaderTuple(':path', '/jimiscool/'),
+            HeaderTuple('customkey', 'sensitiveinfo'),
+        ]
+        assert e.encode(header_set, huffman=True) == result
+
+    def test_sensitive_headers_with_header_tuples(self):
+        """
+        A header field stored in a NeverIndexedHeaderTuple emits a
+        representation that forbids indexing.
+        """
+        e = Encoder()
+        result = (b'\x82\x14\x88\x63\xa1\xa9' +
+                  b'\x32\x08\x73\xd0\xc7\x10' +
+                  b'\x87\x25\xa8\x49\xe9\xea' +
+                  b'\x5f\x5f\x89\x41\x6a\x41' +
+                  b'\x92\x6e\xe5\x35\x52\x9f')
+        header_set = [
+            NeverIndexedHeaderTuple(':method', 'GET'),
+            NeverIndexedHeaderTuple(':path', '/jimiscool/'),
+            NeverIndexedHeaderTuple('customkey', 'sensitiveinfo'),
         ]
         assert e.encode(header_set, huffman=True) == result
 
@@ -63,7 +103,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(header_set, huffman=False) == result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in header_set.items()
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in header_set.items()
         ]
 
     def test_indexed_header_field(self):
@@ -108,7 +149,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(first_header_set, huffman=False) == first_result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in first_header_table
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in first_header_table
         ]
 
         second_header_set = [
@@ -126,7 +168,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(second_header_set, huffman=False) == second_result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in second_header_table
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in second_header_table
         ]
 
         third_header_set = [
@@ -164,7 +207,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(first_header_set, huffman=True) == first_result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in first_header_table
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in first_header_table
         ]
 
         second_header_table = [
@@ -182,7 +226,8 @@ class TestHPACKEncoder(object):
 
         assert e.encode(second_header_set, huffman=True) == second_result
         assert list(e.header_table.dynamic_entries) == [
-            (n.encode('utf-8'), v.encode('utf-8')) for n, v in second_header_table
+            (n.encode('utf-8'), v.encode('utf-8'))
+            for n, v in second_header_table
         ]
 
         third_header_set = [
@@ -211,8 +256,16 @@ class TestHPACKEncoder(object):
             (':path', '/some/path'),
             (':authority', 'www.example.com'),
             ('custom-key', 'custom-value'),
-            ("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:16.0) Gecko/20100101 Firefox/16.0"),
-            ("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+            (
+                "user-agent",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:16.0) "
+                "Gecko/20100101 Firefox/16.0",
+            ),
+            (
+                "accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;"
+                "q=0.8",
+            ),
             ('X-Lukasa-Test', '88989'),
         ]
         e.encode(header_set, huffman=True)
@@ -308,8 +361,13 @@ class TestHPACKDecoder(object):
         of UTF-8
         """
         d = Decoder()
-        header_set = [(b'\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14', b'custom-header')]
-        data = b'\x40\x0a\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14\x0dcustom-header'
+        header_set = [
+            (b'\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14', b'custom-header')
+        ]
+        data = (
+            b'\x40\x0a\x00\x01\x99\x30\x11\x22\x55\x21\x89\x14\x0d'
+            b'custom-header'
+        )
 
         assert d.decode(data, raw=True) == header_set
 
@@ -404,7 +462,6 @@ class TestHPACKDecoder(object):
             (':path', '/',),
             (':authority', 'www.example.com'),
         ]
-        first_header_table = first_header_set[::-1]
         first_data = (
             b'\x82\x86\x84\x01\x8c\xf1\xe3\xc2\xe5\xf2:k\xa0\xab\x90\xf4\xff'
         )
@@ -449,15 +506,15 @@ class TestHPACKDecoder(object):
         # equivalent test for the Encoder.
         d = Decoder()
         data = (
-            b'\x82\x88F\x87\x087A\x07"9\xffC\x8b\xdbm\x88>h\xd1\xcb\x12%' +
-            b'\xba\x7f\x00\x88N\xb0\x8bt\x97\x90\xfa\x7f\x89N\xb0\x8bt\x97\x9a' +
-            b'\x17\xa8\xff|\xbe\xefo\xaa\x96\xb4\x05\x04/G\xfa\xefBT\xc8\xb6' +
-            b'\x19\xf5t|\x19\x11_Gz\x13\xd1\xf4\xf0\xe8\xfd\xf4\x18\xa4\xaf' +
-            b'\xab\xa1\xfc\xfd\x86\xa4\x85\xff}\x1e\xe1O&\x81\xcab\x94\xc57G' +
-            b'\x05<qo\x98\x1a\x92\x17U\xaf\x88\xf9\xc43\x8e\x8b\xe9C\x9c\xb5' +
-            b'%\x11SX\x1ey\xc7E\xff\xcf=\x17\xd2\x879jJ"\xa6\xb0<\xf4_W\x95' +
-            b'\xa5%\x9d?\xd0\x7f]^V\x94\x95\xff\x00\x8a\xfd\xcb\xf2\xd7\x92 ' +
-            b'\x89|F\x11\x84\xae\xbb+\xb3'
+            b'\x82\x87D\x87a\x07\xa4\xacV4\xcfA\x8c\xf1\xe3\xc2\xe5\xf2:k\xa0'
+            b'\xab\x90\xf4\xff@\x88%\xa8I\xe9[\xa9}\x7f\x89%\xa8I\xe9[\xb8\xe8'
+            b'\xb4\xbfz\xbc\xd0\x7ff\xa2\x81\xb0\xda\xe0S\xfa\xd02\x1a\xa4\x9d'
+            b'\x13\xfd\xa9\x92\xa4\x96\x854\x0c\x8aj\xdc\xa7\xe2\x81\x02\xef}'
+            b'\xa9g{\x81qp\x7fjb):\x9d\x81\x00 \x00@\x150\x9a\xc2\xca\x7f,\x05'
+            b'\xc5\xc1S\xb0I|\xa5\x89\xd3M\x1fC\xae\xba\x0cA\xa4\xc7\xa9\x8f3'
+            b'\xa6\x9a?\xdf\x9ah\xfa\x1du\xd0b\r&=Ly\xa6\x8f\xbe\xd0\x01w\xfe'
+            b'\xbeX\xf9\xfb\xed\x00\x17{@\x8a\xfc[=\xbdF\x81\xad\xbc\xa8O\x84y'
+            b'\xe7\xde\x7f'
         )
         d.decode(data)
 
@@ -529,6 +586,48 @@ class TestHPACKDecoder(object):
         with pytest.raises(InvalidTableIndex):
             d.decode(data)
 
+    def test_literal_header_field_with_indexing_emits_headertuple(self):
+        """
+        A header field with indexing emits a HeaderTuple.
+        """
+        d = Decoder()
+        data = b'\x00\x0acustom-key\x0dcustom-header'
+
+        headers = d.decode(data)
+        assert len(headers) == 1
+
+        header = headers[0]
+        assert isinstance(header, HeaderTuple)
+        assert not isinstance(header, NeverIndexedHeaderTuple)
+
+    def test_literal_never_indexed_emits_neverindexedheadertuple(self):
+        """
+        A literal header field that must never be indexed emits a
+        NeverIndexedHeaderTuple.
+        """
+        d = Decoder()
+        data = b'\x10\x0acustom-key\x0dcustom-header'
+
+        headers = d.decode(data)
+        assert len(headers) == 1
+
+        header = headers[0]
+        assert isinstance(header, NeverIndexedHeaderTuple)
+
+    def test_indexed_never_indexed_emits_neverindexedheadertuple(self):
+        """
+        A header field with an indexed name that must never be indexed emits a
+        NeverIndexedHeaderTuple.
+        """
+        d = Decoder()
+        data = b'\x14\x0c/sample/path'
+
+        headers = d.decode(data)
+        assert len(headers) == 1
+
+        header = headers[0]
+        assert isinstance(header, NeverIndexedHeaderTuple)
+
 
 class TestIntegerEncoding(object):
     # These tests are stolen from the HPACK spec.
@@ -571,6 +670,97 @@ class TestIntegerDecoding(object):
             decode_integer(b'\x1f', 5)
 
 
+class TestDictToIterable(object):
+    """
+    The dict_to_iterable function has some subtle requirements: validates that
+    everything behaves as expected.
+
+    As much as possible this tries to be exhaustive.
+    """
+    keys = one_of(
+        text().filter(lambda k: k and not k.startswith(u':')),
+        binary().filter(lambda k: k and not k.startswith(b':'))
+    )
+
+    @given(
+        special_keys=sets(keys),
+        boring_keys=sets(keys),
+    )
+    def test_ordering(self, special_keys, boring_keys):
+        """
+        _dict_to_iterable produces an iterable where all the keys beginning
+        with a colon are emitted first.
+        """
+        def _prepend_colon(k):
+            if isinstance(k, unicode):
+                return u':' + k
+            else:
+                return b':' + k
+
+        special_keys = set(map(_prepend_colon, special_keys))
+        input_dict = {
+            k: b'testval' for k in itertools.chain(
+                special_keys,
+                boring_keys
+            )
+        }
+        filtered = _dict_to_iterable(input_dict)
+
+        received_special = set()
+        received_boring = set()
+
+        for _ in special_keys:
+            k, _ = next(filtered)
+            received_special.add(k)
+        for _ in boring_keys:
+            k, _ = next(filtered)
+            received_boring.add(k)
+
+        assert special_keys == received_special
+        assert boring_keys == received_boring
+
+    @given(
+        special_keys=sets(keys),
+        boring_keys=sets(keys),
+    )
+    def test_ordering_applies_to_encoding(self, special_keys, boring_keys):
+        """
+        When encoding a dictionary the special keys all appear first.
+        """
+        def _prepend_colon(k):
+            if isinstance(k, unicode):
+                return u':' + k
+            else:
+                return b':' + k
+
+        special_keys = set(map(_prepend_colon, special_keys))
+        input_dict = {
+            k: b'testval' for k in itertools.chain(
+                special_keys,
+                boring_keys
+            )
+        }
+        e = Encoder()
+        d = Decoder()
+        encoded = e.encode(input_dict)
+        decoded = iter(d.decode(encoded, raw=True))
+
+        received_special = set()
+        received_boring = set()
+        expected_special = set(map(_to_bytes, special_keys))
+        expected_boring = set(map(_to_bytes, boring_keys))
+
+        for _ in special_keys:
+            k, _ = next(decoded)
+            received_special.add(k)
+        for _ in boring_keys:
+            k, _ = next(decoded)
+            received_boring.add(k)
+
+        assert expected_special == received_special
+        assert expected_boring == received_boring
+
+
 class TestUtilities(object):
     def test_nghttp2_installs_correctly(self):
         # This test is a debugging tool: if nghttp2 is being tested by Travis,
@@ -582,6 +772,6 @@ class TestUtilities(object):
             import nghttp2
         else:
             with pytest.raises(ImportError):
-                import nghttp2
+                import nghttp2  # noqa
 
         assert True

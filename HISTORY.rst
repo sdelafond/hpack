@@ -1,6 +1,32 @@
 Release History
 ===============
 
+2.2.0 (2016-04-20)
+------------------
+
+**API Changes (Backward Compatible)**
+
+- Added ``HeaderTuple`` and ``NeverIndexedHeaderTuple`` classes that signal
+  whether a given header field may ever be indexed in HTTP/2 header
+  compression.
+- Changed ``Decoder.decode()`` to return the newly added ``HeaderTuple`` class
+  and subclass. These objects behave like two-tuples, so this change does not
+  break working code.
+
+**Bugfixes**
+
+- Improve Huffman decoding speed by 4x using an approach borrowed from nghttp2.
+- Improve HPACK decoding speed by 10% by caching header table sizes.
+
+2.1.1 (2016-03-16)
+------------------
+
+**Bugfixes**
+
+- When passing a dictionary or dictionary subclass to ``Encoder.encode``, HPACK
+  now ensures that HTTP/2 special headers (headers whose names begin with
+  ``:`` characters) appear first in the header block.
+
 2.1.0 (2016-02-02)
 ------------------
 

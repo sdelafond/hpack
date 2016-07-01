@@ -10,16 +10,36 @@ import logging
 from .table import HeaderTable
 from .compat import to_byte, to_bytes
 from .exceptions import HPACKDecodingError
-from .huffman import HuffmanDecoder, HuffmanEncoder
+from .huffman import HuffmanEncoder
 from .huffman_constants import (
     REQUEST_CODES, REQUEST_CODES_LENGTH
 )
+from .huffman_table import decode_huffman
+from .struct import HeaderTuple, NeverIndexedHeaderTuple
 
 log = logging.getLogger(__name__)
 
 INDEX_NONE = b'\x00'
 INDEX_NEVER = b'\x10'
 INDEX_INCREMENTAL = b'\x40'
+
+try:  # pragma: no cover
+    basestring = basestring
+except NameError:  # pragma: no cover
+    basestring = (str, bytes)
+
+
+def _unicode_if_needed(header, raw):
+    """
+    Provides a header as a unicode string if raw is False, otherwise returns
+    it as a bytestring.
+    """
+    name = to_bytes(header[0])
+    value = to_bytes(header[1])
+    if not raw:
+        name = name.decode('utf-8')
+        value = value.decode('utf-8')
+    return header.__class__(name, value)
 
 
 def encode_integer(integer, prefix_bits):
@@ -31,15 +51,15 @@ def encode_integer(integer, prefix_bits):
 
     max_number = (2 ** prefix_bits) - 1
 
-    if (integer < max_number):
+    if integer < max_number:
         return bytearray([integer])  # Seriously?
     else:
         elements = [max_number]
-        integer = integer - max_number
+        integer -= max_number
 
         while integer >= 128:
             elements.append((integer % 128) + 128)
-            integer = integer // 128  # We need integer division
+            integer //= 128  # We need integer division
 
         elements.append(integer)
 
@@ -53,7 +73,6 @@ def decode_integer(data, prefix_bits):
     number of bytes that were consumed from ``data`` in order to get that
     integer.
     """
-    multiple = lambda index: 128 ** (index - 1)
     max_number = (2 ** prefix_bits) - 1
     mask = 0xFF >> (8 - prefix_bits)
     index = 0
@@ -61,16 +80,19 @@ def decode_integer(data, prefix_bits):
     try:
         number = to_byte(data[index]) & mask
 
-        if (number == max_number):
+        if number == max_number:
 
             while True:
                 index += 1
                 next_byte = to_byte(data[index])
 
+                # There's some duplication here, but that's because this is a
+                # hot function, and incurring too many function calls here is
+                # a real problem. For that reason, we unrolled the maths.
                 if next_byte >= 128:
-                    number += (next_byte - 128) * multiple(index)
+                    number += (next_byte - 128) * (128 ** (index - 1))
                 else:
-                    number += next_byte * multiple(index)
+                    number += next_byte * (128 ** (index - 1))
                     break
     except IndexError:
         raise HPACKDecodingError(
@@ -79,14 +101,29 @@ def decode_integer(data, prefix_bits):
 
     log.debug("Decoded %d, consumed %d bytes", number, index + 1)
 
-    return (number, index + 1)
+    return number, index + 1
+
+
+def _dict_to_iterable(header_dict):
+    """
+    This converts a dictionary to an iterable of two-tuples. This is a
+    HPACK-specific function becuase it pulls "special-headers" out first and
+    then emits them.
+    """
+    assert isinstance(header_dict, dict)
+    keys = sorted(
+        header_dict.keys(),
+        key=lambda k: not _to_bytes(k).startswith(b':')
+    )
+    for key in keys:
+        yield key, header_dict[key]
 
 
 def _to_bytes(string):
     """
     Convert string to bytes.
     """
-    if not isinstance(string, (str, bytes)):  # pragma: no cover
+    if not isinstance(string, (basestring)):  # pragma: no cover
         string = str(string)
 
     return string if isinstance(string, bytes) else string.encode('utf-8')
@@ -124,7 +161,8 @@ class Encoder(object):
         block.
 
         :param headers: The headers to encode. Must be either an iterable of
-                        tuples or a ``dict``.
+                        tuples, an iterable of :class:`HeaderTuple
+                        <hpack.struct.HeaderTuple>`, or a ``dict``.
 
                         If an iterable of tuples, the tuples may be either
                         two-tuples or three-tuples. If they are two-tuples, the
@@ -134,9 +172,31 @@ class Encoder(object):
                         boolean value indicating whether the header should be
                         added to header tables anywhere. If not present,
                         ``sensitive`` defaults to ``False``.
+
+                        If an iterable of :class:`HeaderTuple
+                        <hpack.struct.HeaderTuple>`, the tuples must always be
+                        two-tuples. Instead of using ``sensitive`` as a third
+                        tuple entry, use :class:`NeverIndexedHeaderTuple
+                        <hpack.struct.NeverIndexedHeaderTuple>` to request that
+                        the field never be indexed.
+
+                        .. warning:: HTTP/2 requires that all special headers
+                            (headers whose names begin with ``:`` characters)
+                            appear at the *start* of the header block. While
+                            this method will ensure that happens for ``dict``
+                            subclasses, callers using any other iterable of
+                            tuples **must** ensure they place their special
+                            headers at the start of the iterable.
+
+                            For efficiency reasons users should prefer to use
+                            iterables of two-tuples: fixing the ordering of
+                            dictionary headers is an expensive operation that
+                            should be avoided if possible.
+
         :param huffman: (optional) Whether to Huffman-encode any header sent as
                         a literal value. Except for use when debugging, it is
                         recommended that this be left enabled.
+
         :returns: A bytestring containing the HPACK-encoded header block.
         """
         # Transforming the headers into a header block is a procedure that can
@@ -149,9 +209,10 @@ class Encoder(object):
         header_block = []
 
         # Turn the headers into a list of tuples if possible. This is the
-        # natural way to interact with them in HPACK.
+        # natural way to interact with them in HPACK. Because dictionaries are
+        # un-ordered, we need to make sure we grab the "special" headers first.
         if isinstance(headers, dict):
-            headers = headers.items()
+            headers = _dict_to_iterable(headers)
 
         # Before we begin, if the header table size has been changed we need
         # to signal all changes since last emission appropriately.
@@ -161,7 +222,12 @@ class Encoder(object):
 
         # Add each header to the header block
         for header in headers:
-            sensitive = header[2] if len(header) > 2 else False
+            sensitive = False
+            if isinstance(header, HeaderTuple):
+                sensitive = not header.indexable
+            elif len(header) > 2:
+                sensitive = header[2]
+
             header = (_to_bytes(header[0]), _to_bytes(header[1]))
             header_block.append(self.add(header, sensitive, huffman))
 
@@ -220,7 +286,7 @@ class Encoder(object):
         Encodes a header using the indexed representation.
         """
         field = encode_integer(index, 7)
-        field[0] = field[0] | 0x80  # we set the top bit
+        field[0] |= 0x80  # we set the top bit
         return bytes(field)
 
     def _encode_literal(self, name, value, indexbit, huffman=False):
@@ -268,7 +334,8 @@ class Encoder(object):
 
     def _encode_table_size_change(self):
         """
-        Produces the encoded form of all header table size change context updates
+        Produces the encoded form of all header table size change context
+        updates.
         """
         block = b''
         for size_bytes in self.table_size_changes:
@@ -286,9 +353,6 @@ class Decoder(object):
 
     def __init__(self):
         self.header_table = HeaderTable()
-        self.huffman_coder = HuffmanDecoder(
-            REQUEST_CODES, REQUEST_CODES_LENGTH
-        )
 
     @property
     def header_table_size(self):
@@ -338,7 +402,9 @@ class Decoder(object):
             encoding_update = bool(current & 0x20)
 
             if indexed:
-                header, consumed = self._decode_indexed(data_mem[current_index:])
+                header, consumed = self._decode_indexed(
+                    data_mem[current_index:]
+                )
             elif literal_index:
                 # It's a literal header that does affect the header table.
                 header, consumed = self._decode_literal_index(
@@ -359,12 +425,8 @@ class Decoder(object):
 
             current_index += consumed
 
-        decode_if_needed = lambda h, r: tuple(
-            to_bytes(i) if r else to_bytes(i).decode('utf-8') for i in h
-        )
-
         try:
-            return [decode_if_needed(header, raw) for header in headers]
+            return [_unicode_if_needed(h, raw) for h in headers]
         except UnicodeDecodeError:
             raise HPACKDecodingError("Unable to decode headers as UTF-8.")
 
@@ -382,7 +444,7 @@ class Decoder(object):
         Decodes a header represented using the indexed representation.
         """
         index, consumed = decode_integer(data, 7)
-        header = self.header_table.get_by_index(index)
+        header = HeaderTuple(*self.header_table.get_by_index(index))
         log.debug("Decoded %s, consumed %d", header, consumed)
         return header, consumed
 
@@ -405,9 +467,12 @@ class Decoder(object):
         if should_index:
             indexed_name = to_byte(data[0]) & 0x3F
             name_len = 6
+            not_indexable = False
         else:
-            indexed_name = to_byte(data[0]) & 0x0F
+            high_byte = to_byte(data[0])
+            indexed_name = high_byte & 0x0F
             name_len = 4
+            not_indexable = high_byte & 0x10
 
         if indexed_name:
             # Indexed header name.
@@ -425,7 +490,7 @@ class Decoder(object):
             name = data[consumed:consumed + length]
 
             if to_byte(data[0]) & 0x80:
-                name = self.huffman_coder.decode(name)
+                name = decode_huffman(name)
             total_consumed = consumed + length + 1  # Since we moved forward 1.
 
         data = data[consumed + length:]
@@ -435,13 +500,19 @@ class Decoder(object):
         value = data[consumed:consumed + length]
 
         if to_byte(data[0]) & 0x80:
-            value = self.huffman_coder.decode(value)
+            value = decode_huffman(value)
 
         # Updated the total consumed length.
         total_consumed += length + consumed
 
+        # If we have been told never to index the header field, encode that in
+        # the tuple we use.
+        if not_indexable:
+            header = NeverIndexedHeaderTuple(name, value)
+        else:
+            header = HeaderTuple(name, value)
+
         # If we've been asked to index this, add it to the header table.
-        header = (name, value)
         if should_index:
             self.header_table.add(name, value)
 
