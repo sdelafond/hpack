@@ -12,6 +12,8 @@ hpack/hpack.py
 hpack/hpack_compat.py
 hpack/huffman.py
 hpack/huffman_constants.py
+hpack/huffman_table.py
+hpack/struct.py
 hpack/table.py
 hpack.egg-info/PKG-INFO
 hpack.egg-info/SOURCES.txt
@@ -20,4 +22,5 @@ hpack.egg-info/top_level.txt
 test/test_hpack.py
 test/test_hpack_integration.py
 test/test_huffman.py
+test/test_struct.py
 test/test_table.py
