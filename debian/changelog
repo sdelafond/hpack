@@ -1,3 +1,9 @@
+python-hpack (2.3.0-1) unstable; urgency=medium
+
+  * Imported Upstream version 2.3.0 (Closes: #833467, CVE-2016-6581)
+
+ -- Sebastien Delafond <seb@debian.org>  Sat, 06 Aug 2016 04:38:16 +0200
+
 python-hpack (2.2.0-1) unstable; urgency=medium
 
   * New upstream version
