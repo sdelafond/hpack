@@ -1,4 +1,0 @@
-[run]
-omit =
-    hpack/compat.py
-    hpack/hpack_compat.py

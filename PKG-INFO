@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: hpack
-Version: 2.0.1
+Version: 2.3.0
 Summary: Pure-Python HPACK header compression
 Home-page: http://hyper.rtfd.org
 Author: Cory Benfield
@@ -12,8 +12,8 @@ Description: ========================================
         
         .. image:: https://raw.github.com/Lukasa/hyper/development/docs/source/images/hyper.png
         
-        .. image:: https://travis-ci.org/Lukasa/hpack.png?branch=master
-            :target: https://travis-ci.org/Lukasa/hpack
+        .. image:: https://travis-ci.org/python-hyper/hpack.png?branch=master
+            :target: https://travis-ci.org/python-hyper/hpack
         
         This module contains a pure-Python HTTP/2 header encoding (HPACK) logic for use
         in Python programs that implement HTTP/2. It also contains a compatibility
@@ -46,6 +46,72 @@ Description: ========================================
         
         Release History
         ===============
+        
+        2.3.0 (2016-08-04)
+        ------------------
+        
+        **Security Fixes**
+        
+        - CVE-2016-6581: HPACK Bomb. This release now enforces a maximum value of the
+          decompressed size of the header list. This is to avoid the so-called "HPACK
+          Bomb" vulnerability, which is caused when a malicious peer sends a compressed
+          HPACK body that decompresses to a gigantic header list size.
+        
+          This also adds a ``OversizedHeaderListError``, which is thrown by the
+          ``decode`` method if the maximum header list size is being violated. This
+          places the HPACK decoder into a broken state: it must not be used after this
+          exception is thrown.
+        
+          This also adds a ``max_header_list_size`` to the ``Decoder`` object. This
+          controls the maximum allowable decompressed size of the header list. By
+          default this is set to 64kB.
+        
+        2.2.0 (2016-04-20)
+        ------------------
+        
+        **API Changes (Backward Compatible)**
+        
+        - Added ``HeaderTuple`` and ``NeverIndexedHeaderTuple`` classes that signal
+          whether a given header field may ever be indexed in HTTP/2 header
+          compression.
+        - Changed ``Decoder.decode()`` to return the newly added ``HeaderTuple`` class
+          and subclass. These objects behave like two-tuples, so this change does not
+          break working code.
+        
+        **Bugfixes**
+        
+        - Improve Huffman decoding speed by 4x using an approach borrowed from nghttp2.
+        - Improve HPACK decoding speed by 10% by caching header table sizes.
+        
+        2.1.1 (2016-03-16)
+        ------------------
+        
+        **Bugfixes**
+        
+        - When passing a dictionary or dictionary subclass to ``Encoder.encode``, HPACK
+          now ensures that HTTP/2 special headers (headers whose names begin with
+          ``:`` characters) appear first in the header block.
+        
+        2.1.0 (2016-02-02)
+        ------------------
+        
+        **API Changes (Backward Compatible)**
+        
+        - Added new ``InvalidTableIndex`` exception, a subclass of
+          ``HPACKDecodingError``.
+        - Instead of throwing ``IndexError`` when encountering invalid encoded integers
+          HPACK now throws ``HPACKDecodingError``.
+        - Instead of throwing ``UnicodeDecodeError`` when encountering headers that are
+          not UTF-8 encoded, HPACK now throws ``HPACKDecodingError``.
+        - Instead of throwing ``IndexError`` when encountering invalid table offsets,
+          HPACK now throws ``InvalidTableIndex``.
+        - Added ``raw`` flag to ``decode``, allowing ``decode`` to return bytes instead
+          of attempting to decode the headers as UTF-8.
+        
+        **Bugfixes**
+        
+        - ``memoryview`` objects are now used when decoding HPACK, improving the
+          performance by avoiding unnecessary data copies.
         
         2.0.1 (2015-11-09)
         ------------------
