@@ -1,0 +1,12 @@
+build/
+env/
+dist/
+*.egg-info/
+*.pyc
+__pycache__
+.coverage
+.tox/
+.cache
+.hypothesis
+.benchmarks/
+hpack-test-case/

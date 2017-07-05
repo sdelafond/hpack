@@ -103,6 +103,8 @@ class HeaderTable(object):
         (b'www-authenticate'            , b''             ),  # noqa
     )  # noqa
 
+    STATIC_TABLE_LENGTH = len(STATIC_TABLE)
+
     def __init__(self):
         self._maxsize = HeaderTable.DEFAULT_SIZE
         self._current_size = 0
@@ -121,13 +123,17 @@ class HeaderTable(object):
         The entry will either be from the static table or
         the dynamic table depending on the value of index.
         """
+        original_index = index
         index -= 1
-        if 0 <= index < len(HeaderTable.STATIC_TABLE):
-            return HeaderTable.STATIC_TABLE[index]
-        index -= len(HeaderTable.STATIC_TABLE)
-        if 0 <= index < len(self.dynamic_entries):
-            return self.dynamic_entries[index]
-        raise InvalidTableIndex("Invalid table index %d" % index)
+        if 0 <= index:
+            if index < HeaderTable.STATIC_TABLE_LENGTH:
+                return HeaderTable.STATIC_TABLE[index]
+
+            index -= HeaderTable.STATIC_TABLE_LENGTH
+            if index < len(self.dynamic_entries):
+                return self.dynamic_entries[index]
+
+        raise InvalidTableIndex("Invalid table index %d" % original_index)
 
     def __repr__(self):
         return "HeaderTable(%d, %s, %r)" % (
@@ -148,9 +154,8 @@ class HeaderTable(object):
         if size > self._maxsize:
             self.dynamic_entries.clear()
             self._current_size = 0
-
-        # Add new entry if the table actually has a size
-        elif self._maxsize > 0:
+        else:
+            # Add new entry
             self.dynamic_entries.appendleft((name, value))
             self._current_size += size
             self._shrink()
@@ -165,7 +170,7 @@ class HeaderTable(object):
             - ``(index, name, None)`` for partial matches on name only.
             - ``(index, name, value)`` for perfect matches.
         """
-        offset = len(HeaderTable.STATIC_TABLE)
+        offset = HeaderTable.STATIC_TABLE_LENGTH + 1
         partial = None
         for (i, (n, v)) in enumerate(HeaderTable.STATIC_TABLE):
             if n == name:
@@ -176,9 +181,9 @@ class HeaderTable(object):
         for (i, (n, v)) in enumerate(self.dynamic_entries):
             if n == name:
                 if v == value:
-                    return i + offset + 1, n, v
+                    return i + offset, n, v
                 elif partial is None:
-                    partial = (i + offset + 1, n, None)
+                    partial = (i + offset, n, None)
         return partial
 
     @property
