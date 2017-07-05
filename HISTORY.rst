@@ -1,6 +1,35 @@
 Release History
 ===============
 
+3.0.0 (2017-03-29)
+------------------
+
+**API Changes (Backward Incompatible)**
+
+- Removed nghttp2 support. This support had rotted and was essentially
+  non-functional, so it has now been removed until someone has time to re-add
+  the support in a functional form.
+- Attempts by the encoder to exceed the maximum allowed header table size via
+  dynamic table size updates (or the absence thereof) are now forbidden.
+
+**API Changes (Backward Compatible)**
+
+- Added a new ``InvalidTableSizeError`` thrown when the encoder does not
+  respect the maximum table size set by the user.
+- Added a ``Decoder.max_allowed_table_size`` field that sets the maximum
+  allowed size of the decoder header table. See the documentation for an
+  indication of how this should be used.
+
+**Bugfixes**
+
+- Up to 25% performance improvement decoding HPACK-packed integers, depending
+  on the platform.
+- HPACK now tolerates receiving multiple header table size changes in sequence,
+  rather than only one.
+- HPACK now forbids header table size changes anywhere but first in a header
+  block, as required by RFC 7541 § 4.2.
+- Other miscellaneous performance improvements.
+
 2.3.0 (2016-08-04)
 ------------------
 

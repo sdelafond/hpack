@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
-from hpack.hpack import (
-    Encoder, Decoder, encode_integer, decode_integer, _dict_to_iterable,
-    _to_bytes
-)
+from hpack.hpack import Encoder, Decoder, _dict_to_iterable, _to_bytes
 from hpack.exceptions import (
-    HPACKDecodingError, InvalidTableIndex, OversizedHeaderListError
+    HPACKDecodingError, InvalidTableIndex, OversizedHeaderListError,
+    InvalidTableSizeError
 )
 from hpack.struct import HeaderTuple, NeverIndexedHeaderTuple
 import itertools
-import os
 import pytest
 
 from hypothesis import given
@@ -641,46 +638,103 @@ class TestHPACKDecoder(object):
         with pytest.raises(OversizedHeaderListError):
             d.decode(data)
 
+    def test_can_decode_multiple_header_table_size_changes(self):
+        """
+        If multiple header table size changes are sent in at once, they are
+        successfully decoded.
+        """
+        d = Decoder()
+        data = b'?a?\xe1\x1f\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
+        expect = [
+            (':method', 'GET'),
+            (':scheme', 'https'),
+            (':path', '/'),
+            (':authority', '127.0.0.1:8443')
+        ]
 
-class TestIntegerEncoding(object):
-    # These tests are stolen from the HPACK spec.
-    def test_encoding_10_with_5_bit_prefix(self):
-        val = encode_integer(10, 5)
-        assert len(val) == 1
-        assert val == bytearray(b'\x0a')
+        assert d.decode(data) == expect
 
-    def test_encoding_1337_with_5_bit_prefix(self):
-        val = encode_integer(1337, 5)
-        assert len(val) == 3
-        assert val == bytearray(b'\x1f\x9a\x0a')
+    def test_header_table_size_change_above_maximum(self):
+        """
+        If a header table size change is received that exceeds the maximum
+        allowed table size, it is rejected.
+        """
+        d = Decoder()
+        d.max_allowed_table_size = 127
+        data = b'?a\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
 
-    def test_encoding_42_with_8_bit_prefix(self):
-        val = encode_integer(42, 8)
-        assert len(val) == 1
-        assert val == bytearray(b'\x2a')
+        with pytest.raises(InvalidTableSizeError):
+            d.decode(data)
 
+    def test_table_size_not_adjusting(self):
+        """
+        If the header table size is shrunk, and then the remote peer doesn't
+        join in the shrinking, then an error is raised.
+        """
+        d = Decoder()
+        d.max_allowed_table_size = 128
+        data = b'\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
 
-class TestIntegerDecoding(object):
-    # These tests are stolen from the HPACK spec.
-    def test_decoding_10_with_5_bit_prefix(self):
-        val = decode_integer(b'\x0a', 5)
-        assert val == (10, 1)
+        with pytest.raises(InvalidTableSizeError):
+            d.decode(data)
 
-    def test_encoding_1337_with_5_bit_prefix(self):
-        val = decode_integer(b'\x1f\x9a\x0a', 5)
-        assert val == (1337, 3)
+    def test_table_size_last_rejected(self):
+        """
+        If a header table size change comes last in the header block, it is
+        forbidden.
+        """
+        d = Decoder()
+        data = b'\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99?a'
 
-    def test_encoding_42_with_8_bit_prefix(self):
-        val = decode_integer(b'\x2a', 8)
-        assert val == (42, 1)
-
-    def test_decode_empty_string_fails(self):
         with pytest.raises(HPACKDecodingError):
-            decode_integer(b'', 8)
+            d.decode(data)
 
-    def test_decode_insufficient_data_fails(self):
+    def test_table_size_middle_rejected(self):
+        """
+        If a header table size change comes anywhere but first in the header
+        block, it is forbidden.
+        """
+        d = Decoder()
+        data = b'\x82?a\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
+
         with pytest.raises(HPACKDecodingError):
-            decode_integer(b'\x1f', 5)
+            d.decode(data)
+
+    def test_truncated_header_name(self):
+        """
+        If a header name is truncated an error is raised.
+        """
+        d = Decoder()
+        # This is a simple header block that has a bad ending. The interesting
+        # part begins on the second line. This indicates a string that has
+        # literal name and value. The name is a 5 character huffman-encoded
+        # string that is only three bytes long.
+        data = (
+            b'\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
+            b'\x00\x85\xf2\xb2J'
+        )
+
+        with pytest.raises(HPACKDecodingError):
+            d.decode(data)
+
+    def test_truncated_header_value(self):
+        """
+        If a header value is truncated an error is raised.
+        """
+        d = Decoder()
+        # This is a simple header block that has a bad ending. The interesting
+        # part begins on the second line. This indicates a string that has
+        # literal name and value. The name is a 5 character huffman-encoded
+        # string, but the entire EOS character has been written over the end.
+        # This causes hpack to see the header value as being supposed to be
+        # 622462 bytes long, which it clearly is not, and so this must fail.
+        data = (
+            b'\x82\x87\x84A\x8a\x08\x9d\\\x0b\x81p\xdcy\xa6\x99'
+            b'\x00\x85\xf2\xb2J\x87\xff\xff\xff\xfd%B\x7f'
+        )
+
+        with pytest.raises(HPACKDecodingError):
+            d.decode(data)
 
 
 class TestDictToIterable(object):
@@ -772,19 +826,3 @@ class TestDictToIterable(object):
 
         assert expected_special == received_special
         assert expected_boring == received_boring
-
-
-class TestUtilities(object):
-    def test_nghttp2_installs_correctly(self):
-        # This test is a debugging tool: if nghttp2 is being tested by Travis,
-        # we need to confirm it imports correctly. Hyper will normally hide the
-        # import failure, so let's discover it here.
-        # Alternatively, if we are *not* testing with nghttp2, this test should
-        # confirm that it's not available.
-        if os.environ.get('NGHTTP2'):
-            import nghttp2
-        else:
-            with pytest.raises(ImportError):
-                import nghttp2  # noqa
-
-        assert True

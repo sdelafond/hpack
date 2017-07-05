@@ -27,6 +27,18 @@ In chronological order:
 
   - Improved decoding efficiency.
 
+- Ian Foote (@Ian-Foote)
+
+  - 25% performance improvement to integer decode.
+
+- Davey Shafik (@dshafik)
+
+  - More testing.
+
+- Seth Michael Larson (@SethMichaelLarson)
+
+  - Code cleanups.
+
 Contributors (hyper)
 ````````````````````
 
