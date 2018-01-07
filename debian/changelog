@@ -1,3 +1,9 @@
+python-hpack (3.0.0-2) unstable; urgency=medium
+
+  * Don't install Hypothesis example database into binary package (Closes: #886523)
+
+ -- Sebastien Delafond <seb@debian.org>  Sun, 07 Jan 2018 10:45:59 +0100
+
 python-hpack (3.0.0-1) unstable; urgency=medium
 
   * Imported Upstream version 3.0.0
