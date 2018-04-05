@@ -1,3 +1,14 @@
+python-hpack (3.0.0-3) unstable; urgency=medium
+
+  * Switch to DEP 14
+  * Update Vcs-* to point to salsa.d.o
+  * Bump-up Standards-Version
+  * Use https in debian/watch
+  * Use https URL for copyright-format
+  * Change Homepage
+
+ -- Sebastien Delafond <seb@debian.org>  Thu, 05 Apr 2018 12:54:25 +0200
+
 python-hpack (3.0.0-2) unstable; urgency=medium
 
   * Don't install Hypothesis example database into binary package (Closes: #886523)
