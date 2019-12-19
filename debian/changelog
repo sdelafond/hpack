@@ -1,3 +1,14 @@
+python-hpack (3.0.0-4) unstable; urgency=medium
+
+  [ Nicolas Dandrimont ]
+  * Remove hypothesis cache directory after running tests
+
+  [ Sébastien Delafond ]
+  * Set maintainer to Debian QA Group
+  * Remove python2 package
+
+ -- Sebastien Delafond <seb@debian.org>  Fri, 20 Dec 2019 17:47:13 +0100
+
 python-hpack (3.0.0-3) unstable; urgency=medium
 
   * Switch to DEP 14
