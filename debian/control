@@ -1,7 +1,7 @@
 Source: python-hpack
 Section: python
 Priority: optional
-Maintainer: Debian QA Group <packages.debian.org>
+Maintainer: Debian QA Group <packages@qa.debian.org>
 Build-Depends: debhelper (>= 9), dh-python, python-all, python-setuptools,
  python-pytest, python-hypothesis, python3-all, python3-setuptools,
  python3-pytest, python3-hypothesis
