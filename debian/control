@@ -2,22 +2,11 @@ Source: python-hpack
 Section: python
 Priority: optional
 Maintainer: Debian QA Group <packages@qa.debian.org>
-Build-Depends: debhelper (>= 9), dh-python, python-all, python-setuptools,
- python-pytest, python-hypothesis, python3-all, python3-setuptools,
- python3-pytest, python3-hypothesis
+Build-Depends: debhelper (>= 9), dh-python, python3-all, python3-setuptools, python3-pytest, python3-hypothesis
 Standards-Version: 4.1.3
 Homepage: https://github.com/python-hyper/hpack
 Vcs-Git: https://salsa.debian.org/debian/python-hpack.git
 Vcs-Browser: https://salsa.debian.org/debian/python-hpack
-
-Package: python-hpack
-Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
-Description: Pure-Python HTTP/2 header encoding (HPACK)
- This module contains a pure-Python HTTP/2 header encoding (HPACK) logic
- for use in Python programs that implement HTTP/2. It also contains a
- compatibility layer that automatically enables the use of nghttp2 if
- it’s available.
 
 Package: python3-hpack
 Architecture: all

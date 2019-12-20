@@ -6,7 +6,7 @@ export HYPOTHESIS_DATABASE_FILE=$(CURDIR)/debian/hypothesis
 export PYBUILD_AFTER_TEST=rm -r {build_dir}/.hypothesis
 
 %:
-	dh $@ --with python2,python3 --buildsystem=pybuild
+	dh $@ --with python3 --buildsystem=pybuild
 
 override_dh_installchangelogs:
 	dh_installchangelogs HISTORY.rst
