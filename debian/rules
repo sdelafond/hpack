@@ -2,7 +2,6 @@
 
 export LC_ALL=C.UTF-8
 export PYBUILD_NAME=hpack
-export HYPOTHESIS_DATABASE_FILE=$(CURDIR)/debian/hypothesis
 export PYBUILD_AFTER_TEST=rm -r {build_dir}/.hypothesis
 
 %:
